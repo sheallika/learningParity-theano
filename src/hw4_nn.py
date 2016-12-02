@@ -273,7 +273,7 @@ class myMLP(object):
                     input=h_input,
                     n_in=h_in,
                     n_out=n_hidden[i],
-                    activation=T.tanh
+                    activation=T.nnet.relu
             ))
 
         # The logistic regression layer gets as input the hidden units
@@ -316,7 +316,7 @@ class myMLP(object):
 class RNNSLU(object):
     """ Elman Neural Net Model Class
     """
-    def __init__(self, nh, nc, ne, de, cs, normal=True):
+    def __init__(self, nh, nc, ne, de, cs, normal=True,layer_normal=False):
         """Initialize the parameters for the RNNSLU
 
         :type nh: int
@@ -362,13 +362,23 @@ class RNNSLU(object):
         self.b = theano.shared(name='b',
                                value=numpy.zeros(nc,
                                dtype=theano.config.floatX))
+        self.g = theano.shared(name='g',
+                               value=0.2 * numpy.random.uniform(-1.0, 1.0,
+                               nh)
+                               .astype(theano.config.floatX))
         self.h0 = theano.shared(name='h0',
                                 value=numpy.zeros(nh,
                                 dtype=theano.config.floatX))
+        self.nh = nh
 
         # bundle
-        self.params = [self.emb, self.wx, self.wh, self.w,
-                       self.bh, self.b, self.h0]
+        if layer_normal==False:
+            self.params = [self.emb, self.wx, self.wh, self.w,
+                           self.bh, self.b, self.h0]
+
+        elif layer_normal==True:
+            self.params = [self.emb, self.wx, self.wh, self.w,
+                           self.bh, self.b, self.h0, self.g]
 
         # as many columns as context window size
         # as many lines as words in the sentence
@@ -381,11 +391,29 @@ class RNNSLU(object):
             h_t = T.nnet.sigmoid(T.dot(x_t, self.wx) + T.dot(h_tm1, self.wh) + self.bh)
             s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
             return [h_t, s_t]
+        
+        def recurrence_layerNormalise(x_t, h_tm1):
+            print ("recurrence_layerNormalise in use")
+            a_t = T.dot(x_t, self.wx) + T.dot(h_tm1, self.wh)
+            mu_t = T.mean(a_t)
 
-        [h, s], _ = theano.scan(fn=recurrence,
-                                sequences=x,
-                                outputs_info=[self.h0, None],
-                                n_steps=x.shape[0])
+            sigma_t = T.sqrt(T.mean((a_t-mu_t)**2))
+
+            h_t = T.nnet.sigmoid((self.g/(sigma_t*1.0))* (a_t - mu_t)+self.bh)
+            s_t = T.nnet.softmax(T.dot(h_t, self.w) + self.b)
+            return [h_t, s_t]
+        
+        if layer_normal==True:
+            [h, s], _ = theano.scan(fn=recurrence_layerNormalise,
+                                    sequences=x,
+                                    outputs_info=[self.h0, None],
+                                    n_steps=x.shape[0])
+
+        elif layer_normal==False:
+            [h, s], _ = theano.scan(fn=recurrence,
+                                    sequences=x,
+                                    outputs_info=[self.h0, None],
+                                    n_steps=x.shape[0])
 
         p_y_given_x_sentence = s[:, 0, :]
         y_pred = T.argmax(p_y_given_x_sentence, axis=1)
@@ -434,7 +462,7 @@ class RNNSLU(object):
                             param.name + '.npy')))
 
 def train_nn(train_model, validate_model, test_model,
-            n_train_batches, n_valid_batches, n_test_batches, n_epochs,
+            n_train_batches, n_valid_batches, n_test_batches, n_epochs,n_bit,
             verbose = True):
     """
     Wrapper function for training and test THEANO model
@@ -551,6 +579,6 @@ def train_nn(train_model, validate_model, test_model,
           'with test performance %f %%' %
           (best_validation_loss * 100., best_iter + 1, test_score * 100.))
     print(('The training process for function ' +
-           calframe[1][3] +
+           calframe[1][3] + ' on ' + str(n_bit)+' bit sequences'+
            ' ran for %.2fm' % ((end_time - start_time) / 60.)), file=sys.stderr)
 
