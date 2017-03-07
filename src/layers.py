@@ -16,8 +16,8 @@ import theano.tensor as T
 from theano.tensor.nnet import conv2d
 from theano.tensor.signal import downsample
 
-from hw4_utils import contextwin, shared_dataset, load_data, shuffle, conlleval, check_dir
-from hw4_nn import myMLP, train_nn
+from utils import contextwin, shared_dataset, load_data, shuffle, conlleval, check_dir
+from nn import myMLP, train_nn
 import sys
 sys.setrecursionlimit(5000)
 
